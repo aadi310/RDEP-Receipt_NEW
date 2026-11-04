@@ -365,11 +365,160 @@ const RDEP_CSS = `
   animation:rdep-truck 3.2s ease-in-out infinite;
 }
 .rdep-star{animation:rdep-star-wave 1.8s ease-in-out infinite}
+
+/* ---- Cinematic reveal system ---- */
+.rv{opacity:0;transform:translateY(34px) scale(.97);filter:blur(6px);
+  transition:opacity .8s cubic-bezier(.22,.8,.3,1),transform .8s cubic-bezier(.22,.8,.3,1),filter .8s ease}
+.rv.rv-in{opacity:1;transform:none;filter:none}
+.rv-reset,.rv-reset *{transition:none!important}
+.rv-c{opacity:0;transform:translateY(18px);
+  transition:opacity .6s ease var(--d,0ms),transform .6s cubic-bezier(.22,.8,.3,1) var(--d,0ms)}
+.rv-in .rv-c{opacity:1;transform:none}
+
+@keyframes rdep-pop{0%{opacity:0;transform:scale(.4) rotate(-8deg)}100%{opacity:1;transform:none}}
+.rv-pop-in{opacity:0}
+.rv-in .rv-pop-in{animation:rdep-pop .7s cubic-bezier(.3,1.5,.5,1) both}
+
+@keyframes rdep-wipe{
+  from{clip-path:inset(-10px 100% -10px 0)}
+  to{clip-path:inset(-10px -10px -10px 0)}
+}
+.rv-wipe{clip-path:inset(-10px 100% -10px 0)}
+.rv-in .rv-wipe{animation:rdep-wipe 1.2s cubic-bezier(.4,0,.2,1) .6s both}
+
+.rv-bar{width:0}
+.rv-in .rv-bar{width:var(--w,0);transition:width 1.8s cubic-bezier(.22,.8,.3,1) .6s}
+
+@keyframes rdep-shine{0%,55%{transform:translateX(-130%)}100%{transform:translateX(130%)}}
+.rdep-shine{position:relative;overflow:hidden}
+.rdep-shine::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(110deg,transparent 30%,rgba(255,255,255,.38) 50%,transparent 70%);
+  transform:translateX(-130%);
+  animation:rdep-shine 3.2s ease-in-out infinite;
+}
+
+.rdep-caret{display:inline-block;width:0;height:.85em;margin-left:2px;border-right:3px solid #180add;
+  vertical-align:-.05em;animation:rdep-blink .8s steps(1) infinite}
+
+@media (prefers-reduced-motion:reduce){
+  .rv,.rv-c,.rv-pop-in,.rv-wipe{opacity:1!important;transform:none!important;filter:none!important;
+    clip-path:none!important;transition:none!important;animation:none!important}
+  .rv-bar{width:var(--w,0)!important;transition:none!important}
+  .rdep-shine::after{animation:none}
+}
 `
 
 /* -------------------------------------------------------------------------- */
 /*  Component                                                                  */
 /* -------------------------------------------------------------------------- */
+
+/* -------------------------------------------------------------------------- */
+/*  Motion helpers                                                             */
+/* -------------------------------------------------------------------------- */
+
+const prefersReducedMotion = () =>
+  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches
+
+/** Counts up from 0 once scrolled into view. Replays whenever `value` changes. */
+function CountUp({
+  value,
+  decimals = 0,
+  prefix = "",
+  delay = 0,
+  duration = 1600,
+}: {
+  value: number
+  decimals?: number
+  prefix?: string
+  delay?: number
+  duration?: number
+}) {
+  const ref = useRef<HTMLSpanElement>(null)
+  const [shown, setShown] = useState(0)
+
+  useEffect(() => {
+    const el = ref.current
+    if (!el) return
+    if (prefersReducedMotion()) {
+      setShown(value)
+      return
+    }
+    setShown(0)
+    let raf = 0
+    let timer: ReturnType<typeof setTimeout> | undefined
+
+    const run = () => {
+      const t0 = performance.now()
+      const tick = (now: number) => {
+        const p = Math.min(1, (now - t0) / duration)
+        setShown(value * (1 - Math.pow(1 - p, 4)))
+        if (p < 1) raf = requestAnimationFrame(tick)
+      }
+      raf = requestAnimationFrame(tick)
+    }
+
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          io.disconnect()
+          timer = setTimeout(run, delay)
+        }
+      },
+      { threshold: 0.4 },
+    )
+    io.observe(el)
+
+    return () => {
+      io.disconnect()
+      if (timer) clearTimeout(timer)
+      cancelAnimationFrame(raf)
+    }
+  }, [value, delay, duration])
+
+  return (
+    <span ref={ref}>
+      {prefix}
+      {shown.toLocaleString("en-AU", { minimumFractionDigits: decimals, maximumFractionDigits: decimals })}
+    </span>
+  )
+}
+
+/** Types text out letter by letter with a blinking caret. Layout stays stable. */
+function Typewriter({ text, delay = 0, speed = 55 }: { text: string; delay?: number; speed?: number }) {
+  const [n, setN] = useState(0)
+
+  useEffect(() => {
+    if (prefersReducedMotion()) {
+      setN(text.length)
+      return
+    }
+    setN(0)
+    let i = 0
+    let iv: ReturnType<typeof setInterval> | undefined
+    const t = setTimeout(() => {
+      iv = setInterval(() => {
+        i++
+        setN(i)
+        if (i >= text.length && iv) clearInterval(iv)
+      }, speed)
+    }, delay)
+    return () => {
+      clearTimeout(t)
+      if (iv) clearInterval(iv)
+    }
+  }, [text, delay, speed])
+
+  return (
+    <span aria-label={text}>
+      <span aria-hidden>{text.slice(0, n)}</span>
+      {n < text.length && <span aria-hidden className="rdep-caret" />}
+      <span aria-hidden className="opacity-0">
+        {text.slice(n)}
+      </span>
+    </span>
+  )
+}
 
 export default function Home() {
   const [currentSlide, setCurrentSlide] = useState(0)
@@ -651,6 +800,54 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
     setExpandedProducts([])
   }, [currentReceiptId])
 
+  // Cinematic scene-by-scene reveal. Cards fade/rise in as they enter the viewport,
+  // their inner blocks follow in a staggered sequence. Replays on receipt switch.
+  useEffect(() => {
+    const root = receiptContainerRef.current
+    if (!root || prefersReducedMotion()) return
+    const stack = root.firstElementChild as HTMLElement | null
+    if (!stack) return
+
+    const cards = Array.from(stack.children).filter((el) => el.id !== "height-marker") as HTMLElement[]
+
+    const io = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((e) => {
+          if (e.isIntersecting) {
+            ;(e.target as HTMLElement).classList.add("rv-in")
+            io.unobserve(e.target)
+          }
+        })
+      },
+      { threshold: 0.1, rootMargin: "0px 0px -6% 0px" },
+    )
+
+    cards.forEach((card) => {
+      card.classList.add("rv", "rv-reset")
+      card.classList.remove("rv-in")
+
+      const kids: HTMLElement[] = []
+      Array.from(card.children).forEach((child) => {
+        const el = child as HTMLElement
+        if (el.matches(".space-y-2,.space-y-3,.space-y-4,.space-y-6,.grid")) {
+          kids.push(...(Array.from(el.children) as HTMLElement[]))
+        } else {
+          kids.push(el)
+        }
+      })
+      kids.forEach((k, i) => {
+        k.classList.add("rv-c")
+        k.style.setProperty("--d", `${200 + i * 110}ms`)
+      })
+
+      void card.offsetWidth // commit hidden state without a transition
+      card.classList.remove("rv-reset")
+      io.observe(card)
+    })
+
+    return () => io.disconnect()
+  }, [currentReceiptId])
+
   // Auto-height for WordPress iframe
   useEffect(() => {
     const postHeight = () => {
@@ -691,9 +888,17 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
           <div className="bg-white rounded-3xl shadow-xl border border-gray-100 mt-6 mx-4 overflow-hidden">
             <div className="px-6 pt-8 pb-5 bg-white">
               <div className="flex items-center justify-between gap-4">
-                <img src={RDEP_LOGO} alt="RDEP" className="h-10 w-auto object-contain" />
+                <img
+                  src={RDEP_LOGO}
+                  alt="RDEP"
+                  className="h-10 w-auto object-contain rv-pop-in"
+                  style={{ animationDelay: "250ms" }}
+                />
 
-                <div className="bg-gray-50 rounded-xl p-2.5 border border-gray-100 flex-shrink-0">
+                <div
+                  className="bg-gray-50 rounded-xl p-2.5 border border-gray-100 flex-shrink-0 rv-pop-in"
+                  style={{ animationDelay: "450ms" }}
+                >
                   <Image
                     src="/images/design-mode/800px-QR_code_for_mobile_English_Wikipedia.svg.png"
                     alt="Support QR"
@@ -706,7 +911,7 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
 
               <div className="mt-6">
                 <div className="text-2xl font-black italic uppercase tracking-tight text-black">
-                  Thank you, {customerName}
+                  <Typewriter text={`Thank you, ${customerName}`} delay={600} />
                 </div>
                 <div className="text-xs uppercase tracking-widest text-gray-500 font-medium mt-1">
                   Summary of your RDEP purchase
@@ -722,11 +927,14 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
                       Total Amount (Incl. GST)
                     </div>
                     <div className="text-4xl font-black text-black tabular-nums mt-0.5">
-                      {money(currentReceipt.total)}
+                      <CountUp value={currentReceipt.total} prefix="$" decimals={2} delay={900} duration={1800} />
                       <span className="text-xs font-bold text-gray-400 ml-1.5 tracking-widest">AUD</span>
                     </div>
                   </div>
-                  <div className="bg-[#180add] text-white text-[10px] font-bold px-3.5 py-1.5 rounded-full uppercase tracking-tighter mb-1.5 flex-shrink-0">
+                  <div
+                    className="bg-[#180add] text-white text-[10px] font-bold px-3.5 py-1.5 rounded-full uppercase tracking-tighter mb-1.5 flex-shrink-0 rv-pop-in rdep-shine"
+                    style={{ animationDelay: "2600ms" }}
+                  >
                     Paid
                   </div>
                 </div>
@@ -875,7 +1083,9 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
               </div>
               <div className="flex justify-between items-center pt-4 mt-2 border-t border-gray-200">
                 <span className="text-sm font-bold uppercase text-black">Total Paid</span>
-                <span className="text-xl font-bold text-black tracking-tighter">{money(currentReceipt.total)}</span>
+                <span className="text-xl font-bold text-black tracking-tighter">
+                  <CountUp value={currentReceipt.total} prefix="$" decimals={2} delay={500} />
+                </span>
               </div>
             </div>
 
@@ -922,7 +1132,7 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
             {/* Timeline */}
             <div className="relative">
               {/* Connectors between node centres */}
-              <div className="absolute top-[18px] left-[16.667%] right-[16.667%] h-1 flex">
+              <div className="absolute top-[18px] left-[16.667%] right-[16.667%] h-1 flex rv-wipe">
                 {[0, 1].map((segment) => (
                   <div key={segment} className="relative flex-1 h-full">
                     <div className="absolute inset-0 bg-gray-200 rounded-full overflow-hidden">
@@ -955,7 +1165,11 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
                   const StepIcon = isDone ? Check : step.Icon
 
                   return (
-                    <div key={step.label} className="flex flex-col items-center text-center">
+                    <div
+                      key={step.label}
+                      className="flex flex-col items-center text-center rv-pop-in"
+                      style={{ animationDelay: `${500 + i * 450}ms` }}
+                    >
                       <div className="relative z-10 h-10 w-10">
                         {isActive && <span className="rdep-ping absolute inset-0 rounded-full bg-[#180add]/40" />}
                         <div
@@ -1038,7 +1252,7 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
                 return (
                   <div key={coupon.code} className="relative flex rounded-2xl overflow-hidden bg-gray-50 shadow-sm">
                     {/* Stub */}
-                    <div className="w-24 shrink-0 bg-[#180add] text-white flex flex-col items-center justify-center py-5">
+                    <div className="w-24 shrink-0 bg-[#180add] text-white flex flex-col items-center justify-center py-5 rdep-shine">
                       <div className="text-2xl font-black italic leading-none">{coupon.value}</div>
                       <div className="text-[9px] font-bold uppercase tracking-widest mt-1.5 text-white/80">
                         {coupon.unit}
@@ -1371,14 +1585,18 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                 <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mb-1">Points Earned</div>
                 <div className="flex items-baseline">
-                  <span className="text-xl font-bold text-black">+{currentReceipt.points.toLocaleString("en-AU")}</span>
+                  <span className="text-xl font-bold text-black">
+                    +<CountUp value={currentReceipt.points} delay={600} />
+                  </span>
                   <span className="ml-1 text-[10px] font-bold text-[#180add]">Pending</span>
                 </div>
               </div>
 
               <div className="bg-gray-50 rounded-2xl p-4 border border-gray-100">
                 <div className="text-[9px] font-bold text-gray-400 uppercase tracking-tighter mb-1">Total Balance</div>
-                <div className="text-xl font-bold text-black">2,850</div>
+                <div className="text-xl font-bold text-black">
+                  <CountUp value={2850} delay={800} duration={2000} />
+                </div>
               </div>
             </div>
 
@@ -1394,7 +1612,10 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
               </div>
 
               <div className="w-full h-2 bg-white/20 rounded-full overflow-hidden mb-3">
-                <div className="h-full bg-white rounded-full relative" style={{ width: "60%" }}>
+                <div
+                  className="h-full bg-white rounded-full relative rv-bar"
+                  style={{ "--w": "60%" } as React.CSSProperties}
+                >
                   <div className="absolute top-0 right-0 h-full w-4 bg-white/40 skew-x-12 transform translate-x-2" />
                 </div>
               </div>
