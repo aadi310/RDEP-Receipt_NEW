@@ -1222,49 +1222,25 @@ body { font-family: 'Poppins', sans-serif; font-size: 14px; color: #000; backgro
           <div className="bg-white rounded-3xl overflow-hidden mx-4 mt-6 relative shadow-xl border border-gray-100">
             <Carousel className="w-full" setApi={setPromoApi} opts={{ loop: true }}>
               <CarouselContent>
-                <CarouselItem>
-                  <div className="relative w-full aspect-[1893/667]">
-                    <a href={SITE_URL} target="_blank" rel="noopener noreferrer" className="w-full h-full block">
+                {[1, 2].map((n) => (
+                  <CarouselItem key={n}>
+                    <a
+                      href={SITE_URL}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="relative block w-full aspect-video"
+                    >
                       <Image
-                        src="/images/design-mode/rdep-banner-1.png"
-                        alt="RDEP banner 1"
+                        src={`/images/design-mode/rdep-banner-${n}.png`}
+                        alt={`RDEP banner ${n}`}
                         fill
+                        sizes="(max-width: 448px) 100vw, 448px"
                         className="object-cover"
-                        priority
-                      />
-                      <div className="absolute inset-0 bg-gradient-to-r from-black/20 to-transparent" />
-                    </a>
-
-                    <div className="absolute bottom-6 left-6">
-                      <a href={SITE_URL} target="_blank" rel="noopener noreferrer">
-                        <button className="bg-white text-black text-[10px] font-bold uppercase italic tracking-widest px-6 py-2.5 rounded-sm shadow-lg hover:bg-[#180add] hover:text-white transition-colors">
-                          Shop Collection
-                        </button>
-                      </a>
-                    </div>
-                  </div>
-                </CarouselItem>
-
-                <CarouselItem>
-                  <div className="relative w-full aspect-[1893/667]">
-                    <a href={SITE_URL} target="_blank" rel="noopener noreferrer" className="w-full h-full block">
-                      <Image
-                        src="/images/design-mode/rdep-banner-2.png"
-                        alt="RDEP banner 2"
-                        fill
-                        className="object-cover"
+                        priority={n === 1}
                       />
                     </a>
-
-                    <div className="absolute bottom-6 left-6">
-                      <a href={SITE_URL} target="_blank" rel="noopener noreferrer">
-                        <button className="bg-white text-black text-[10px] font-bold uppercase italic tracking-widest px-6 py-2.5 rounded-sm shadow-lg hover:bg-[#180add] hover:text-white transition-colors">
-                          Explore More
-                        </button>
-                      </a>
-                    </div>
-                  </div>
-                </CarouselItem>
+                  </CarouselItem>
+                ))}
               </CarouselContent>
 
               <div className="absolute bottom-4 right-6 flex gap-1.5 z-10">
